@@ -1,0 +1,103 @@
+/* ============================================
+   NAVBAR
+   ============================================ */
+.navbar {
+  padding: 1rem 0;
+  z-index: 100;
+}
+
+.navbar-brand {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+/* ============================================
+   LAYOUT & CONTAINER
+   ============================================ */
+.container {
+  max-width: 900px;
+}
+
+/* ============================================
+   ALERT
+   ============================================ */
+.alert {
+  margin-bottom: 2rem;
+}
+
+/* ============================================
+   AUTHENTICATION LINKS
+   ============================================ */
+#authLinks {
+  align-items: center;
+  z-index: 101;
+}
+
+.nav-link {
+  color: rgba(255, 255, 255, 1) !important;
+  cursor: pointer;
+  transition: color 0.3s ease;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.nav-link:hover {
+  color: rgba(255, 255, 255, 1);
+}
+
+/* ============================================
+   USER DROPDOWN
+   ============================================ */
+#userDropdown .nav-link {
+  padding-right: 0.5rem;
+  color: rgba(255, 255, 255, 1) !important;
+}
+
+#userDropdown .dropdown-toggle::after {
+  margin-left: 0.5rem;
+}
+
+#userDropdown .dropdown-menu {
+  background-color: #343a40;
+  border-color: #495057;
+  margin-top: 0.5rem;
+}
+
+#userDropdown .dropdown-item {
+  color: rgba(255, 255, 255, 0.8);
+  transition: background-color 0.2s ease;
+}
+
+#userDropdown .dropdown-item:hover {
+  background-color: #495057;
+  color: rgba(255, 255, 255, 1);
+}
+
+#userDropdown .dropdown-divider {
+  border-color: #495057;
+}
+
+/* ============================================
+   PAGE SECTIONS
+   ============================================ */
+.page-section {
+  min-height: calc(100vh - 120px);
+}
+
+/* ============================================
+   FORMS
+   ============================================ */
+.form-control {
+  border-radius: 0.375rem;
+  border: 1px solid #dee2e6;
+}
+
+.form-control:focus {
+  border-color: #495057;
+  box-shadow: 0 0 0 0.2rem rgba(73, 80, 87, 0.25);
+}
+
+.form-label {
+  font-weight: 600;
+  color: #212529;
+}
