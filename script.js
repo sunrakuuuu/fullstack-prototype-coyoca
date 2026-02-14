@@ -1,10 +1,3 @@
-/**
- * Initialize authentication UI on page load
- * - Shows login/register links by default
- * - Shows user dropdown if logged in
- * - Handles logout functionality
- * - Manages page navigation
- */
 let currentUser = null;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -16,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const verifyEmailBtn = document.getElementById('verifyEmailBtn');
   const verifyEmailMessage = document.getElementById('verifyEmailMessage');
   const loginForm = document.getElementById('loginForm');
+  const STORAGE_KEY = 'ipt_demo_v1';
   const routeToSection = {
     '/': 'home',
     '/home': 'home',
@@ -29,7 +23,77 @@ document.addEventListener('DOMContentLoaded', () => {
     '/requests': 'requests'
   };
   const protectedRoutes = new Set(['/profile', '/my-requests', '/employees', '/departments', '/requests']);
-  const adminRoutes = new Set(['/my-requests', '/employees', '/departments', '/requests']);
+  const adminRoutes = new Set(['/employees', '/departments', '/requests']);
+
+  function seedDatabase() {
+    return {
+      accounts: [
+        {
+          id: 1,
+          firstName: 'Admin',
+          lastName: 'User',
+          name: 'Admin User',
+          email: 'admin@example.com',
+          password: 'Password123!',
+          role: 'Admin',
+          verified: true
+        }
+      ],
+      departments: [
+        { id: 1, name: 'Engineering', description: 'Engineering department' },
+        { id: 2, name: 'HR', description: 'Human Resources' }
+      ],
+      employees: [],
+      requests: []
+    };
+  }
+
+  function saveToStorage() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(window.db));
+  }
+
+  function loadFromStorage() {
+    const fallback = seedDatabase();
+    const raw = localStorage.getItem(STORAGE_KEY);
+    let parsed = null;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = null;
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      parsed = fallback;
+      // Migrate legacy per-key storage if present.
+      try {
+        const legacyAccounts = JSON.parse(localStorage.getItem('accounts') || '[]');
+        const legacyEmployees = JSON.parse(localStorage.getItem('employees') || '[]');
+        const legacyDepartments = JSON.parse(localStorage.getItem('departments') || '[]');
+        const legacyRequests = JSON.parse(localStorage.getItem('requests') || '[]');
+        if (Array.isArray(legacyAccounts) && legacyAccounts.length) parsed.accounts = legacyAccounts;
+        if (Array.isArray(legacyEmployees) && legacyEmployees.length) parsed.employees = legacyEmployees;
+        if (Array.isArray(legacyDepartments) && legacyDepartments.length) parsed.departments = legacyDepartments;
+        if (Array.isArray(legacyRequests) && legacyRequests.length) parsed.requests = legacyRequests;
+      } catch {
+        // Continue with seeded defaults when migration data is invalid.
+      }
+    }
+
+    if (!Array.isArray(parsed.accounts)) parsed.accounts = fallback.accounts;
+    if (!Array.isArray(parsed.departments)) parsed.departments = fallback.departments;
+    if (!Array.isArray(parsed.employees)) parsed.employees = [];
+    if (!Array.isArray(parsed.requests)) parsed.requests = [];
+
+    parsed.requests = parsed.requests.map((request) => ({
+      ...request,
+      employeeEmail: String(request.employeeEmail || request.userId || '').toLowerCase(),
+      status: request.status || 'Pending',
+      date: request.date || request.createdAt || new Date().toISOString()
+    }));
+
+    window.db = parsed;
+    saveToStorage();
+  }
 
   function normalizeHash(rawHash = window.location.hash) {
     const hash = (rawHash || '').trim();
@@ -273,15 +337,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- CRUD: localStorage helpers ---
   function getStorage(key, def = []) {
-    try {
-      const v = localStorage.getItem(key);
-      return v ? JSON.parse(v) : def;
-    } catch {
-      return def;
+    if (!window.db || typeof window.db !== 'object') window.db = {};
+    if (!Array.isArray(window.db[key])) {
+      window.db[key] = Array.isArray(def) ? [...def] : [];
+      saveToStorage();
     }
+    return window.db[key];
   }
   function setStorage(key, arr) {
-    localStorage.setItem(key, JSON.stringify(arr));
+    if (!window.db || typeof window.db !== 'object') window.db = {};
+    window.db[key] = Array.isArray(arr) ? arr : [];
+    saveToStorage();
   }
   function nextId(arr) {
     const ids = arr.map(x => x.id).filter(Boolean);
@@ -290,8 +356,146 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- My Requests CRUD ---
   function getMyRequests() {
-    const user = localStorage.getItem('email') || localStorage.getItem('username') || '';
-    return getStorage('requests', []).filter(r => r.userId === user);
+    const email = (currentUser?.email || '').toLowerCase();
+    if (!email) return [];
+    return getStorage('requests', []).filter((r) => (r.employeeEmail || '').toLowerCase() === email);
+  }
+  function getRequestStatusBadgeClass(status) {
+    if (status === 'Approved') return 'text-bg-success';
+    if (status === 'Rejected') return 'text-bg-danger';
+    return 'text-bg-warning';
+  }
+  function ensureRequestModal() {
+    if (document.getElementById('requestModal')) return;
+    document.body.insertAdjacentHTML('beforeend', `
+      <div class="modal fade" id="requestModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+          <div class="modal-content">
+            <form id="requestModalForm">
+              <div class="modal-header">
+                <h5 class="modal-title" id="requestModalTitle">New Request</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <input type="hidden" id="requestModalId" />
+                <div class="mb-3">
+                  <label for="requestModalType" class="form-label">Type</label>
+                  <select id="requestModalType" class="form-select">
+                    <option value="Equipment">Equipment</option>
+                    <option value="Leave">Leave</option>
+                    <option value="Resources">Resources</option>
+                  </select>
+                </div>
+                <label class="form-label">Items</label>
+                <div id="requestItemsContainer"></div>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="addRequestItemBtn">+ Add Item</button>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-dark">Save Request</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    `);
+    document.getElementById('addRequestItemBtn').addEventListener('click', () => appendRequestItemRow());
+    document.getElementById('requestModalForm').addEventListener('submit', submitRequestForm);
+  }
+  function appendRequestItemRow(name = '', quantity = 1) {
+    const container = document.getElementById('requestItemsContainer');
+    const row = document.createElement('div');
+    row.className = 'd-flex align-items-center gap-2 mb-2 request-item-row';
+    row.innerHTML = `
+      <input type="text" class="form-control request-item-name-dynamic" placeholder="Item name" value="${escapeHtml(name)}" />
+      <input type="number" class="form-control request-item-qty-dynamic" placeholder="Qty" min="1" value="${Number(quantity) > 0 ? Number(quantity) : 1}" style="max-width: 110px;" />
+      <button type="button" class="btn btn-outline-danger btn-sm request-item-remove" aria-label="Remove item">&times;</button>
+    `;
+    row.querySelector('.request-item-remove').addEventListener('click', () => row.remove());
+    container.appendChild(row);
+  }
+  function openRequestForm(id) {
+    ensureRequestModal();
+    const requests = getStorage('requests', []);
+    const form = document.getElementById('requestModalForm');
+    const title = document.getElementById('requestModalTitle');
+    const idInput = document.getElementById('requestModalId');
+    const typeInput = document.getElementById('requestModalType');
+    const itemsContainer = document.getElementById('requestItemsContainer');
+    itemsContainer.innerHTML = '';
+    form.reset();
+    idInput.value = '';
+    typeInput.value = 'Equipment';
+
+    if (id) {
+      const request = requests.find((r) => String(r.id) === String(id));
+      if (request) {
+        title.textContent = 'Edit Request';
+        idInput.value = String(request.id);
+        typeInput.value = request.type || 'Equipment';
+        if (Array.isArray(request.items) && request.items.length) {
+          request.items.forEach((item) => appendRequestItemRow(item.name || '', item.quantity || 1));
+        } else {
+          appendRequestItemRow();
+        }
+      }
+    } else {
+      title.textContent = 'New Request';
+      appendRequestItemRow();
+    }
+
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('requestModal'));
+    modal.show();
+  }
+  function closeRequestForm() {
+    const modalEl = document.getElementById('requestModal');
+    if (!modalEl) return;
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.hide();
+  }
+  function submitRequestForm(e) {
+    e.preventDefault();
+    const requests = getStorage('requests', []);
+    const id = document.getElementById('requestModalId').value;
+    const type = document.getElementById('requestModalType').value;
+    const rows = Array.from(document.querySelectorAll('#requestItemsContainer .request-item-row'));
+    const items = rows.map((row) => {
+      const name = row.querySelector('.request-item-name-dynamic').value.trim();
+      const quantity = parseInt(row.querySelector('.request-item-qty-dynamic').value, 10) || 0;
+      return { name, quantity };
+    }).filter((item) => item.name && item.quantity > 0);
+
+    if (items.length === 0) {
+      window.alert('Add at least one item with a quantity greater than 0.');
+      return;
+    }
+    const employeeEmail = (currentUser?.email || '').toLowerCase();
+    if (!employeeEmail) {
+      window.alert('You must be logged in to create a request.');
+      return;
+    }
+
+    if (id) {
+      const idx = requests.findIndex((r) => String(r.id) === String(id));
+      if (idx >= 0) {
+        requests[idx].type = type;
+        requests[idx].items = items;
+        requests[idx].employeeEmail = employeeEmail;
+        requests[idx].status = requests[idx].status || 'Pending';
+      }
+    } else {
+      requests.push({
+        id: nextId(requests),
+        type,
+        items,
+        status: 'Pending',
+        date: new Date().toISOString(),
+        employeeEmail
+      });
+    }
+    setStorage('requests', requests);
+    closeRequestForm();
+    renderMyRequests();
   }
   function renderMyRequests() {
     const list = document.getElementById('myRequestsList');
@@ -308,105 +512,51 @@ document.addEventListener('DOMContentLoaded', () => {
       emptyBlock.classList.add('d-none');
       list.classList.remove('d-none');
       if (addBtn) addBtn.classList.remove('d-none');
-      list.innerHTML = requests.map(r => {
+      const rows = requests.map((r) => {
         const type = r.type || 'Equipment';
-        const items = r.items || [];
-        const summary = items.map((it, i) => `${it.name || 'Item ' + (i + 1)}: ${it.quantity}`).join(', ') || '—';
+        const items = Array.isArray(r.items) ? r.items : [];
+        const summary = items.map((it) => `${it.name} (${it.quantity})`).join(', ') || '-';
+        const status = r.status || 'Pending';
+        const dateLabel = new Date(r.date || Date.now()).toLocaleDateString();
         return `
-          <div class="card mb-2">
-            <div class="card-body d-flex justify-content-between align-items-start">
-              <div>
-                <h6 class="mb-1">${escapeHtml(type)}</h6>
-                <p class="text-muted small mb-0">${escapeHtml(summary)}</p>
-              </div>
-              <div>
-                <button type="button" class="btn btn-sm btn-outline-primary me-1" data-request-edit="${r.id}">Edit</button>
-                <button type="button" class="btn btn-sm btn-outline-danger" data-request-delete="${r.id}">Delete</button>
-              </div>
-            </div>
-          </div>`;
+          <tr>
+            <td>${escapeHtml(dateLabel)}</td>
+            <td>${escapeHtml(type)}</td>
+            <td>${escapeHtml(summary)}</td>
+            <td><span class="badge ${getRequestStatusBadgeClass(status)}">${escapeHtml(status)}</span></td>
+            <td>
+              <button type="button" class="btn btn-sm btn-outline-primary me-1" data-request-edit="${r.id}">Edit</button>
+              <button type="button" class="btn btn-sm btn-outline-danger" data-request-delete="${r.id}">Delete</button>
+            </td>
+          </tr>`;
       }).join('');
-      list.querySelectorAll('[data-request-edit]').forEach(btn => btn.addEventListener('click', () => openRequestForm(btn.dataset.requestEdit)));
-      list.querySelectorAll('[data-request-delete]').forEach(btn => btn.addEventListener('click', () => deleteRequest(btn.dataset.requestDelete)));
+      list.innerHTML = `
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      list.querySelectorAll('[data-request-edit]').forEach((btn) => btn.addEventListener('click', () => openRequestForm(btn.dataset.requestEdit)));
+      list.querySelectorAll('[data-request-delete]').forEach((btn) => btn.addEventListener('click', () => deleteRequest(btn.dataset.requestDelete)));
     }
-  }
-  function openRequestForm(id) {
-    const card = document.getElementById('requestFormCard');
-    document.getElementById('requestFormTitle').textContent = id ? 'Edit request' : 'New request';
-    document.getElementById('requestId').value = id || '';
-    const typeInput = document.getElementById('requestType');
-    const qtyInputs = document.querySelectorAll('.request-qty');
-    const nameInputs = document.querySelectorAll('.request-item-name');
-    qtyInputs.forEach((inp) => { inp.value = 0; });
-    nameInputs.forEach((inp) => { inp.value = ''; });
-    if (id) {
-      const requests = getStorage('requests', []);
-      const r = requests.find(x => String(x.id) === String(id));
-      if (r) {
-        typeInput.value = r.type || 'Equipment';
-        (r.items || []).forEach((it, i) => {
-          if (qtyInputs[i]) qtyInputs[i].value = it.quantity ?? 0;
-          if (nameInputs[i]) nameInputs[i].value = it.name || '';
-        });
-      }
-    } else {
-      typeInput.value = 'Equipment';
-    }
-    card.classList.remove('d-none');
-  }
-  function closeRequestForm() {
-    document.getElementById('requestFormCard').classList.add('d-none');
   }
   function deleteRequest(id) {
-    const requests = getStorage('requests', []).filter(r => String(r.id) !== String(id));
+    if (!window.confirm('Delete this request?')) return;
+    const requests = getStorage('requests', []).filter((r) => String(r.id) !== String(id));
     setStorage('requests', requests);
     renderMyRequests();
   }
   document.getElementById('addRequestBtn').addEventListener('click', () => openRequestForm(''));
   document.getElementById('createRequestBtn').addEventListener('click', () => openRequestForm(''));
-  document.getElementById('requestFormCancelBtn').addEventListener('click', closeRequestForm);
-  document.querySelectorAll('[data-request-qty-plus]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const i = btn.dataset.requestQtyPlus;
-      const inp = document.querySelector(`.request-qty[data-request-qty="${i}"]`);
-      if (inp) inp.value = Math.max(0, parseInt(inp.value, 10) + 1);
-    });
-  });
-  document.querySelectorAll('[data-request-qty-minus]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const i = btn.dataset.requestQtyMinus;
-      const inp = document.querySelector(`.request-qty[data-request-qty="${i}"]`);
-      if (inp) inp.value = Math.max(0, parseInt(inp.value, 10) - 1);
-    });
-  });
-  document.getElementById('requestForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const requests = getStorage('requests', []);
-    const id = document.getElementById('requestId').value;
-    const userId = localStorage.getItem('email') || localStorage.getItem('username') || '';
-    const type = document.getElementById('requestType').value.trim() || 'Equipment';
-    const qtyInputsArr = document.querySelectorAll('.request-qty');
-    const nameInputsArr = document.querySelectorAll('.request-item-name');
-    const items = Array.from(qtyInputsArr)
-      .map((inp, i) => ({
-        name: (nameInputsArr[i] && nameInputsArr[i].value.trim()) || '',
-        quantity: parseInt(inp.value, 10) || 0
-      }))
-      .filter((it) => it.name !== '');
-    if (id) {
-      const idx = requests.findIndex(r => String(r.id) === id);
-      if (idx >= 0) {
-        requests[idx].type = type;
-        requests[idx].items = items;
-      }
-    } else {
-      requests.push({ id: nextId(requests), userId, type, items, createdAt: new Date().toISOString() });
-    }
-    setStorage('requests', requests);
-    closeRequestForm();
-    renderMyRequests();
-  });
-
   // Convert stored date (mm/dd/yy or yyyy-mm-dd) to yyyy-mm-dd for <input type="date">
   function toDateInputValue(val) {
     if (!val) return '';
@@ -589,16 +739,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Accounts (Admin) ---
   function getAccounts() {
-    if (!window.db) window.db = {};
-    if (!Array.isArray(window.db.accounts)) {
-      window.db.accounts = getStorage('accounts', []);
-    }
-    return window.db.accounts;
+    return getStorage('accounts', []);
   }
   function saveAccounts(accounts) {
-    if (!window.db) window.db = {};
     window.db.accounts = accounts;
-    setStorage('accounts', accounts);
+    saveToStorage();
   }
   function renderAccounts() {
     const tbody = document.getElementById('accountsTableBody');
@@ -718,6 +863,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Initial UI setup
+  loadFromStorage();
   initializeAuthState();
   if (!window.location.hash) navigateTo('#/');
   handleRouting();
@@ -728,3 +874,4 @@ document.addEventListener('DOMContentLoaded', () => {
   if (route === '/departments') renderDepartments();
   if (route === '/requests') renderAccounts();
 });
+
