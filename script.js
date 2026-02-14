@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function loadFromStorage() {
     const fallback = seedDatabase();
+    const seededAdmin = fallback.accounts[0];
     const raw = localStorage.getItem(STORAGE_KEY);
     let parsed = null;
     try {
@@ -83,6 +84,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!Array.isArray(parsed.departments)) parsed.departments = fallback.departments;
     if (!Array.isArray(parsed.employees)) parsed.employees = [];
     if (!Array.isArray(parsed.requests)) parsed.requests = [];
+
+    // Ensure demo admin exists for predictable local demo login.
+    const hasSeededAdmin = parsed.accounts.some(
+      (account) => (account.email || '').toLowerCase() === seededAdmin.email
+    );
+    if (!hasSeededAdmin) {
+      parsed.accounts.push({ ...seededAdmin, id: nextId(parsed.accounts) });
+    }
 
     parsed.requests = parsed.requests.map((request) => ({
       ...request,

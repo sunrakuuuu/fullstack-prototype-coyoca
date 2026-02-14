@@ -35,6 +35,8 @@ The app seeds a default admin account on first load:
 - Password: `Password123!`
 - Role: `Admin`
 
+If login fails with these credentials, clear site `localStorage` and reload once.
+
 ## Getting Started
 
 1. Clone this repository.
@@ -67,4 +69,3 @@ Then visit `http://localhost:5500`.
 - This is a prototype and not production-secure.
 - Authentication and verification are simulated client-side.
 - No backend or database is connected yet.
-
