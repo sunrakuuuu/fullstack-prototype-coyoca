@@ -5,6 +5,8 @@
  * - Handles logout functionality
  * - Manages page navigation
  */
+let currentUser = null;
+
 document.addEventListener('DOMContentLoaded', () => {
   const authLinks = document.getElementById('authLinks');
   const userDropdown = document.getElementById('userDropdown');
@@ -12,21 +14,84 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutBtn = document.getElementById('logoutBtn');
   const registerForm = document.getElementById('registerForm');
   const verifyEmailBtn = document.getElementById('verifyEmailBtn');
+  const verifyEmailMessage = document.getElementById('verifyEmailMessage');
   const loginForm = document.getElementById('loginForm');
+  const routeToSection = {
+    '/': 'home',
+    '/home': 'home',
+    '/login': 'login',
+    '/register': 'register',
+    '/verify-email': 'verify-email',
+    '/profile': 'profile',
+    '/my-requests': 'my-requests',
+    '/employees': 'employees',
+    '/departments': 'departments',
+    '/requests': 'requests'
+  };
+  const protectedRoutes = new Set(['/profile', '/my-requests', '/employees', '/departments', '/requests']);
+  const adminRoutes = new Set(['/my-requests', '/employees', '/departments', '/requests']);
 
-  function updateAuthUI() {
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    const username = localStorage.getItem('username') || 'User';
-    const role = localStorage.getItem('role') || 'User';
+  function normalizeHash(rawHash = window.location.hash) {
+    const hash = (rawHash || '').trim();
+    const withoutPrefix = hash.startsWith('#') ? hash.slice(1) : hash;
+    if (!withoutPrefix || withoutPrefix === '/') return '/';
+    return withoutPrefix.startsWith('/') ? withoutPrefix : `/${withoutPrefix}`;
+  }
 
+  function navigateTo(hash) {
+    const route = normalizeHash(hash);
+    window.location.hash = `#${route}`;
+  }
+
+  function setAuthState(isAuth, user = null) {
     document.body.classList.remove('not-authenticated', 'authenticated', 'is-admin');
-    if (isLoggedIn) {
-      document.body.classList.add('authenticated');
-      if (role === 'Admin') document.body.classList.add('is-admin');
-      usernameDisplay.textContent = username;
-    } else {
+    if (!isAuth || !user) {
+      currentUser = null;
       document.body.classList.add('not-authenticated');
+      usernameDisplay.textContent = 'User';
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('username');
+      localStorage.removeItem('role');
+      localStorage.removeItem('email');
+      localStorage.removeItem('authToken');
+      return;
     }
+
+    currentUser = {
+      ...user,
+      email: (user.email || '').toLowerCase(),
+      role: user.role || 'User'
+    };
+    const displayName = currentUser.firstName || currentUser.name || currentUser.email || 'User';
+    const fullName = currentUser.name || [currentUser.firstName || '', currentUser.lastName || ''].filter(Boolean).join(' ');
+    localStorage.setItem('auth_token', currentUser.email);
+    localStorage.setItem('isLoggedIn', 'true');
+    localStorage.setItem('username', displayName);
+    localStorage.setItem('firstName', currentUser.firstName || displayName);
+    localStorage.setItem('lastName', currentUser.lastName || '');
+    localStorage.setItem('email', currentUser.email);
+    localStorage.setItem('role', currentUser.role);
+    localStorage.setItem('authToken', currentUser.email);
+    if (fullName) localStorage.setItem('fullName', fullName);
+
+    document.body.classList.add('authenticated');
+    if (currentUser.role === 'Admin') document.body.classList.add('is-admin');
+    usernameDisplay.textContent = displayName;
+  }
+
+  function initializeAuthState() {
+    const tokenEmail = (localStorage.getItem('auth_token') || '').toLowerCase();
+    if (!tokenEmail) {
+      setAuthState(false);
+      return;
+    }
+    const account = getAccounts().find((a) => (a.email || '').toLowerCase() === tokenEmail && a.verified === true);
+    if (!account) {
+      setAuthState(false);
+      return;
+    }
+    setAuthState(true, account);
   }
 
   function showPage(pageId) {
@@ -41,83 +106,119 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Handle hash navigation (User role can only access profile)
-  function handleNavigation() {
-    let hash = window.location.hash.slice(1) || 'home';
-    const role = localStorage.getItem('role') || 'User';
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    const userOnlyPages = ['my-requests', 'employees', 'departments', 'requests'];
-    if (isLoggedIn && role !== 'Admin' && userOnlyPages.includes(hash)) {
-      hash = 'profile';
-      window.location.hash = '#profile';
+  function handleRouting() {
+    const route = normalizeHash();
+    const isLoggedIn = !!currentUser;
+    const role = currentUser?.role || 'User';
+
+    if (protectedRoutes.has(route) && !isLoggedIn) {
+      navigateTo('#/login');
+      return;
     }
-    showPage(hash);
-  }
-
-  // Register form submission
-  registerForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const firstName = document.getElementById('firstName').value;
-    const lastName = document.getElementById('lastName').value;
-    const email = document.getElementById('email').value;
-    
-    // Store registration data
-    localStorage.setItem('firstName', firstName);
-    localStorage.setItem('lastName', lastName);
-    localStorage.setItem('email', email);
-    localStorage.setItem('role', 'User');
-    
-    // Clear form
-    registerForm.reset();
-    
-    // Navigate to verify email page
-    window.location.hash = '#verify-email';
-  });
-
-  // Verify email button -> go to login page
-  verifyEmailBtn.addEventListener('click', () => {
-    window.location.hash = '#login';
-  });
-
-  // Login form submission (JWT-like token simulation)
-  loginForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const email = document.getElementById('loginEmail').value.trim().toLowerCase();
-    const accounts = getStorage('accounts', []);
-    const account = accounts.find(a => (a.email || '').toLowerCase() === email);
-    // Role from Accounts list first, else @admin.com domain, else User
-    let role = 'User';
-    if (account && (account.role === 'Admin' || account.role === 'User')) {
-      role = account.role;
-    } else if (email.endsWith('@admin.com')) {
-      role = 'Admin';
+    if (adminRoutes.has(route) && role !== 'Admin') {
+      navigateTo('#/profile');
+      return;
     }
-    const firstName = (account && account.name) ? account.name.split(/\s+/)[0] : (localStorage.getItem('firstName') || email.split('@')[0]);
-    const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + btoa(JSON.stringify({ email, role, iat: Date.now() })) + '.signature';
-    localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('username', firstName);
-    localStorage.setItem('role', role);
-    localStorage.setItem('email', email);
-    localStorage.setItem('authToken', token);
-    loginForm.reset();
-    updateAuthUI();
-    window.location.hash = '#home';
-  });
 
-  // Pre-fill login email if user just came from register
-  window.addEventListener('hashchange', () => {
-    if (window.location.hash === '#login') {
-      const storedEmail = localStorage.getItem('email');
+    const pageId = routeToSection[route] || 'home';
+    showPage(pageId);
+    if (pageId === 'profile') {
+      fillProfileBox();
+      if (profileView) profileView.classList.remove('d-none');
+      if (profileEdit) profileEdit.classList.add('d-none');
+    }
+    if (pageId === 'my-requests') renderMyRequests();
+    if (pageId === 'employees') { renderEmployees(); renderDepartments(); }
+    if (pageId === 'departments') renderDepartments();
+    if (pageId === 'requests') renderAccounts();
+    if (pageId === 'login') {
+      const storedEmail = localStorage.getItem('unverified_email') || localStorage.getItem('email');
       const loginEmailInput = document.getElementById('loginEmail');
       if (storedEmail && loginEmailInput && !loginEmailInput.value) {
         loginEmailInput.value = storedEmail;
       }
     }
-    if (window.location.hash === '#profile') {
-      fillProfileBox();
-      if (profileView) profileView.classList.remove('d-none');
-      if (profileEdit) profileEdit.classList.add('d-none');
+    if (pageId === 'verify-email') {
+      const pendingEmail = localStorage.getItem('unverified_email');
+      if (verifyEmailMessage) {
+        verifyEmailMessage.innerHTML = pendingEmail
+          ? `<strong>Verification sent to ${escapeHtml(pendingEmail)}</strong>`
+          : '<strong>No pending email verification.</strong>';
+      }
+      if (verifyEmailBtn) verifyEmailBtn.disabled = !pendingEmail;
     }
+  }
+
+  // Register form submission
+  registerForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const firstName = document.getElementById('firstName').value.trim();
+    const lastName = document.getElementById('lastName').value.trim();
+    const email = document.getElementById('email').value.trim().toLowerCase();
+    const password = document.getElementById('password').value;
+
+    if (password.length < 6) {
+      window.alert('Password must be at least 6 characters.');
+      return;
+    }
+    const accounts = getAccounts();
+    const exists = accounts.some((a) => (a.email || '').toLowerCase() === email);
+    if (exists) {
+      window.alert('Email already exists.');
+      return;
+    }
+    accounts.push({
+      id: nextId(accounts),
+      firstName,
+      lastName,
+      name: [firstName, lastName].filter(Boolean).join(' '),
+      email,
+      password,
+      role: 'User',
+      verified: false
+    });
+    saveAccounts(accounts);
+    localStorage.setItem('unverified_email', email);
+    registerForm.reset();
+    navigateTo('#/verify-email');
+  });
+
+  // Simulate email verification
+  verifyEmailBtn.addEventListener('click', () => {
+    const pendingEmail = (localStorage.getItem('unverified_email') || '').toLowerCase();
+    if (!pendingEmail) {
+      window.alert('No pending email to verify.');
+      return;
+    }
+    const accounts = getAccounts();
+    const accountIndex = accounts.findIndex((a) => (a.email || '').toLowerCase() === pendingEmail);
+    if (accountIndex < 0) {
+      window.alert('Account not found for verification.');
+      return;
+    }
+    accounts[accountIndex].verified = true;
+    saveAccounts(accounts);
+    localStorage.removeItem('unverified_email');
+    navigateTo('#/login');
+  });
+
+  // Login form submission
+  loginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+    const password = document.getElementById('loginPassword').value;
+    const accounts = getAccounts();
+    const account = accounts.find(
+      (a) => (a.email || '').toLowerCase() === email && a.password === password && a.verified === true
+    );
+    if (!account) {
+      window.alert('Invalid email/password or account not verified.');
+      return;
+    }
+    localStorage.setItem('auth_token', email);
+    setAuthState(true, account);
+    loginForm.reset();
+    navigateTo('#/profile');
   });
 
   // Edit Profile: toggle view / edit, save, cancel
@@ -151,21 +252,24 @@ document.addEventListener('DOMContentLoaded', () => {
     profileEdit.classList.add('d-none');
     profileView.classList.remove('d-none');
     fillProfileBox();
-    updateAuthUI();
+    if (currentUser) {
+      currentUser.firstName = firstName;
+      currentUser.lastName = lastName;
+      currentUser.email = email.toLowerCase();
+      currentUser.name = [firstName, lastName].filter(Boolean).join(' ');
+      setAuthState(true, currentUser);
+    }
   });
 
-  // Logout functionality (clear JWT-like token too)
+  // Logout functionality
   logoutBtn.addEventListener('click', (e) => {
     e.preventDefault();
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('username');
-    localStorage.removeItem('authToken');
-    updateAuthUI();
-    window.location.hash = '#home';
+    setAuthState(false);
+    navigateTo('#/');
   });
 
   // Listen to hash changes
-  window.addEventListener('hashchange', handleNavigation);
+  window.addEventListener('hashchange', handleRouting);
 
   // --- CRUD: localStorage helpers ---
   function getStorage(key, def = []) {
@@ -485,7 +589,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Accounts (Admin) ---
   function getAccounts() {
-    return getStorage('accounts', []);
+    if (!window.db) window.db = {};
+    if (!Array.isArray(window.db.accounts)) {
+      window.db.accounts = getStorage('accounts', []);
+    }
+    return window.db.accounts;
+  }
+  function saveAccounts(accounts) {
+    if (!window.db) window.db = {};
+    window.db.accounts = accounts;
+    setStorage('accounts', accounts);
   }
   function renderAccounts() {
     const tbody = document.getElementById('accountsTableBody');
@@ -534,7 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
     card.classList.remove('d-none');
   }
   function deleteAccount(id) {
-    setStorage('accounts', getAccounts().filter(a => String(a.id) !== String(id)));
+    saveAccounts(getAccounts().filter(a => String(a.id) !== String(id)));
     renderAccounts();
   }
   function resetAccountPassword(id) {
@@ -544,7 +657,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const newPassword = window.prompt('Enter new password for ' + (a.email || a.name));
     if (newPassword == null) return;
     a.password = newPassword;
-    setStorage('accounts', accounts);
+    saveAccounts(accounts);
     renderAccounts();
   }
   document.getElementById('addAccountBtn').addEventListener('click', () => openAccountForm(''));
@@ -570,7 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       accounts.push({ id: nextId(accounts), name, email, password: password || '', role, verified });
     }
-    setStorage('accounts', accounts);
+    saveAccounts(accounts);
     document.getElementById('accountFormCard').classList.add('d-none');
     renderAccounts();
   });
@@ -583,11 +696,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Render CRUD lists when navigating to those pages
   window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.slice(1);
-    if (hash === 'my-requests') renderMyRequests();
-    if (hash === 'employees') { renderEmployees(); renderDepartments(); }
-    if (hash === 'departments') renderDepartments();
-    if (hash === 'requests') renderAccounts();
+    const route = normalizeHash();
+    if (route === '/my-requests') renderMyRequests();
+    if (route === '/employees') { renderEmployees(); renderDepartments(); }
+    if (route === '/departments') renderDepartments();
+    if (route === '/requests') renderAccounts();
   });
 
   function fillProfileBox() {
@@ -605,12 +718,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Initial UI setup
-  updateAuthUI();
-  handleNavigation();
-  const hash = window.location.hash.slice(1);
-  if (hash === 'profile') fillProfileBox();
-  if (hash === 'my-requests') renderMyRequests();
-  if (hash === 'employees') renderEmployees();
-  if (hash === 'departments') renderDepartments();
-  if (hash === 'requests') renderAccounts();
+  initializeAuthState();
+  if (!window.location.hash) navigateTo('#/');
+  handleRouting();
+  const route = normalizeHash();
+  if (route === '/profile') fillProfileBox();
+  if (route === '/my-requests') renderMyRequests();
+  if (route === '/employees') renderEmployees();
+  if (route === '/departments') renderDepartments();
+  if (route === '/requests') renderAccounts();
 });
