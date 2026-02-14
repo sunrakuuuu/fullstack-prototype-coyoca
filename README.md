@@ -40,7 +40,7 @@ The app seeds a default admin account on first load:
 1. Clone this repository.
 2. Open `index.html` in your browser.
 
-Optional local server (recommended for consistent behavior):
+Optional local server:
 
 ```powershell
 python -m http.server 5500
@@ -63,13 +63,8 @@ Then visit `http://localhost:5500`.
 
 ## Notes
 
+- School Build Project
 - This is a prototype and not production-secure.
 - Authentication and verification are simulated client-side.
 - No backend or database is connected yet.
 
-## Next Steps
-
-- Connect frontend flows to a real backend API
-- Replace simulated auth with secure token/session handling
-- Add form validation hardening and automated tests
-- Add build tooling and deployment pipeline
