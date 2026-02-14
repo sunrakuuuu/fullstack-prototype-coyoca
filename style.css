@@ -78,6 +78,30 @@
 }
 
 /* ============================================
+   PAGE VISIBILITY & AUTH ROLES
+   ============================================ */
+.page {
+  display: none;
+}
+.page.active {
+  display: block;
+}
+
+body.not-authenticated .role-logged-in {
+  display: none !important;
+}
+body.authenticated .role-logged-out {
+  display: none !important;
+}
+
+.role-admin {
+  display: none;
+}
+body.is-admin .role-admin {
+  display: block;
+}
+
+/* ============================================
    PAGE SECTIONS
    ============================================ */
 .page-section {
@@ -100,4 +124,22 @@
 .form-label {
   font-weight: 600;
   color: #212529;
+}
+
+/* ============================================
+   PROFILE BOX
+   ============================================ */
+.profile-box {
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+}
+
+.profile-box .card-body {
+  padding: 1.5rem;
+}
+
+.profile-item .profile-label {
+  font-size: 0.875rem;
+  color: #6c757d;
+  font-weight: 600;
 }
