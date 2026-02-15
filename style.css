@@ -1,5 +1,5 @@
 /* ============================================
-   NAVBAR
+   Navbar
    ============================================ */
 .navbar {
   padding: 1rem 0;
@@ -12,21 +12,21 @@
 }
 
 /* ============================================
-   LAYOUT & CONTAINER
+   Layout & Containers
    ============================================ */
 .container {
   max-width: 900px;
 }
 
 /* ============================================
-   ALERT
+   Alerts
    ============================================ */
 .alert {
   margin-bottom: 2rem;
 }
 
 /* ============================================
-   AUTHENTICATION LINK
+   Authentication Links
    ============================================ */
 #authLinks {
   align-items: center;
@@ -46,7 +46,7 @@
 }
 
 /* ============================================
-   USER DROPDOWN
+   User Dropdown Menu
    ============================================ */
 #userDropdown .nav-link {
   padding-right: 0.5rem;
@@ -78,7 +78,7 @@
 }
 
 /* ============================================
-   PAGE VISIBILITY & AUTH ROLES
+   Page Visibility & Role-Based Display
    ============================================ */
 .page {
   display: none;
@@ -102,14 +102,14 @@ body.is-admin .role-admin {
 }
 
 /* ============================================
-   PAGE SECTIONS
+   Page Sections
    ============================================ */
 .page-section {
   min-height: calc(100vh - 120px);
 }
 
 /* ============================================
-   FORMS
+   Forms
    ============================================ */
 .form-control {
   border-radius: 0.375rem;
@@ -127,7 +127,7 @@ body.is-admin .role-admin {
 }
 
 /* ============================================
-   PROFILE BOX
+   Profile Boxes
    ============================================ */
 .profile-box {
   border: 1px solid #dee2e6;
@@ -143,3 +143,4 @@ body.is-admin .role-admin {
   color: #6c757d;
   font-weight: 600;
 }
+
