@@ -52,7 +52,7 @@ Then visit `http://localhost:5500`.
 
 ## Project Structure
 
-- `index.html` - app markup and page sections
+- `index.html` - web app markup and page sections
 - `style.css` - custom styling
 - `script.js` - routing, auth simulation, storage, and CRUD logic
 

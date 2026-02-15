@@ -746,7 +746,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderDepartments();
   });
 
-  // --- Accounts (Admin) ---
+  // --- Accounts ---
   function getAccounts() {
     return getStorage('accounts', []);
   }
