@@ -1,4 +1,4 @@
-# Full-Stack Prototype WIP (Backend Next)
+# Full-Stack Prototype School Build WIP (Backend Next)
 
 A static frontend prototype that simulates a full-stack workflow using `localStorage`.
 
