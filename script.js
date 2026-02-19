@@ -203,7 +203,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pageId === 'my-requests') renderMyRequests();
     if (pageId === 'employees') { renderEmployees(); renderDepartments(); }
     if (pageId === 'departments') renderDepartments();
-    if (pageId === 'requests') renderAccounts();
+    if (pageId === 'requests') {
+      renderAdminRequests();
+      renderAccounts();
+    }
     if (pageId === 'login') {
       const storedEmail = localStorage.getItem('unverified_email') || localStorage.getItem('email');
       const loginEmailInput = document.getElementById('loginEmail');
@@ -564,6 +567,71 @@ document.addEventListener('DOMContentLoaded', () => {
     setStorage('requests', requests);
     renderMyRequests();
   }
+  function updateRequestStatus(id, status) {
+    const requests = getStorage('requests', []);
+    const index = requests.findIndex((r) => String(r.id) === String(id));
+    if (index < 0) return;
+    requests[index].status = status;
+    requests[index].reviewedAt = new Date().toISOString();
+    setStorage('requests', requests);
+    renderAdminRequests();
+  }
+  function renderAdminRequests() {
+    const tbody = document.getElementById('adminRequestsTableBody');
+    const emptyAlert = document.getElementById('adminRequestsEmptyAlert');
+    if (!tbody || !emptyAlert) return;
+
+    const requests = getStorage('requests', [])
+      .slice()
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+    const accountsByEmail = new Map(
+      getAccounts().map((account) => [String(account.email || '').toLowerCase(), account])
+    );
+
+    if (requests.length === 0) {
+      tbody.innerHTML = '';
+      emptyAlert.classList.remove('d-none');
+      return;
+    }
+
+    emptyAlert.classList.add('d-none');
+    tbody.innerHTML = requests.map((request) => {
+      const employeeEmail = String(request.employeeEmail || '').toLowerCase();
+      const account = accountsByEmail.get(employeeEmail);
+      const accountName = account?.name || [account?.firstName || '', account?.lastName || ''].filter(Boolean).join(' ');
+      const userLabel = accountName ? `${accountName} (${employeeEmail})` : employeeEmail || '—';
+      const type = request.type || 'Equipment';
+      const items = Array.isArray(request.items) ? request.items : [];
+      const summary = items.map((item) => `${item.name} (${item.quantity})`).join(', ') || '-';
+      const status = request.status || 'Pending';
+      const dateLabel = new Date(request.date || Date.now()).toLocaleDateString();
+      const isPending = status === 'Pending';
+      const actions = isPending
+        ? `
+            <button type="button" class="btn btn-sm btn-outline-success me-1" data-request-approve="${request.id}">Approve</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-request-deny="${request.id}">Deny</button>
+          `
+        : '<span class="text-muted">Reviewed</span>';
+
+      return `
+        <tr>
+          <td>${escapeHtml(dateLabel)}</td>
+          <td>${escapeHtml(userLabel)}</td>
+          <td>${escapeHtml(type)}</td>
+          <td>${escapeHtml(summary)}</td>
+          <td><span class="badge ${getRequestStatusBadgeClass(status)}">${escapeHtml(status)}</span></td>
+          <td>${actions}</td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.querySelectorAll('[data-request-approve]').forEach((button) => {
+      button.addEventListener('click', () => updateRequestStatus(button.dataset.requestApprove, 'Approved'));
+    });
+    tbody.querySelectorAll('[data-request-deny]').forEach((button) => {
+      button.addEventListener('click', () => updateRequestStatus(button.dataset.requestDeny, 'Rejected'));
+    });
+  }
   document.getElementById('addRequestBtn').addEventListener('click', () => openRequestForm(''));
   document.getElementById('createRequestBtn').addEventListener('click', () => openRequestForm(''));
   // Convert stored date (mm/dd/yy or yyyy-mm-dd) to yyyy-mm-dd for <input type="date">
@@ -854,7 +922,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (route === '/my-requests') renderMyRequests();
     if (route === '/employees') { renderEmployees(); renderDepartments(); }
     if (route === '/departments') renderDepartments();
-    if (route === '/requests') renderAccounts();
+    if (route === '/requests') {
+      renderAdminRequests();
+      renderAccounts();
+    }
   });
 
   function fillProfileBox() {
@@ -881,6 +952,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (route === '/my-requests') renderMyRequests();
   if (route === '/employees') renderEmployees();
   if (route === '/departments') renderDepartments();
-  if (route === '/requests') renderAccounts();
+  if (route === '/requests') {
+    renderAdminRequests();
+    renderAccounts();
+  }
 });
-
